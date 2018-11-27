@@ -1,0 +1,113 @@
+---
+title: "Practical Machine Learning Project"
+author: "Zito Relova"
+date: "25 November 2018"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background 
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+We will first import some packages and load in the data.
+
+```{r}
+library(caret)
+library(rattle)
+trainData <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"),header=TRUE)
+testData <-  read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"),header=TRUE)
+
+```
+
+A lot of the columns have missing values. We will remove them together with the first 7 columns which give information about the people who did the test. These will be excluded from the model.
+
+```{r}
+toRemove <- which(colSums(is.na(trainData) | trainData=="")>0.9*dim(trainData)[1]) 
+cleanTrain <- trainData[,-toRemove]
+cleanTrain <- cleanTrain[,-c(1:7)]
+dim(cleanTrain)
+
+toRemove <- which(colSums(is.na(testData) |testData=="")>0.9*dim(testData)[1]) 
+cleanTest <- testData[,-toRemove]
+cleanTest <- cleanTest[,-1]
+dim(cleanTest)
+```
+
+After removing the columns with missing values, we can see that the clean version of the training data now has only 53 columns.
+
+```{r}
+set.seed(42)
+idx_train1 <- createDataPartition(cleanTrain$classe, p=0.75, list=F)
+train1 <- cleanTrain[idx_train1,]
+test1 <- cleanTrain[-idx_train1,]
+dim(train1)
+```
+
+We will be testing 3 different models: Classification Tree, Random Forest, and Gradient Boosting Method.
+
+```{r}
+trControl <- trainControl(method="cv", number=5)
+CT_mod <- train(classe~., data=train1, method="rpart", trControl=trControl)
+```
+
+Let's look at a plot of the tree
+
+```{r}
+fancyRpartPlot(CT_mod$finalModel)
+```
+
+Let's check the accuracy of the model
+
+```{r}
+trainpred <- predict(CT_mod,newdata=test1)
+confMatCT <- confusionMatrix(test1$classe,trainpred)
+
+confMatCT$table
+confMatCT$overall[1]
+```
+
+The 2nd model is Random Forest
+
+```{r}
+RF_mod <- train(classe~., data=train1, method='rf', trControl=trControl, verbose=F)
+```
+
+Let's inspect the accuracy of the model with varying numbers of predictors
+
+```{r}
+plot(RF_mod, main="Accuracy of Random Forest by number of predictors")
+plot(RF_mod$finalModel,main="Model error of Random Forest by number of trees")
+
+trainpred <- predict(RF_mod, newdata=test1)
+confMatRF <- confusionMatrix(test1$classe, trainpred)
+
+confMatRF$table
+confMatRF$overall[1]
+```
+
+The final model we will be testing is the Gradient Boosting Method
+
+```{r}
+GBM_mod <- train(classe~., data=train1, method="gbm", trControl=trControl, verbose=F)
+
+trainpred <- predict(GBM_mod, newdata=test1)
+confMatGBM <- confusionMatrix(test1$classe, trainpred)
+
+confMatGBM$table
+confMatGBM$overall[1]
+```
+
+After checking the accuracy of the three individual models we see that Random Forest performed the best. This model is what we will use on the final test set. We will now make our final predictions
+
+```{r}
+finalPred <- predict(RF_mod, newdata=cleanTest)
+finalPred
